@@ -1,46 +1,47 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Dict, List
+
 
 @dataclass
 class EnvConfig:
     """
     Stores fixed experiment parameters for the tutoring environment.
 
-    This configuration defines the skill set and hyperparameters that control
-    learner initialization, learning dynamics, and episode limits. It is created
-    once and passed to the environment and learner as read-only settings.
-
-    Note: does not store any learner state or changing data (e.g., mastery or history).
+    Defines the skill set and hyperparameters for learner initialization and dynamics.
+    Created once and passed to environment/learner as read-only.
     """
-    
-    # list of 10 skills, each to be instantiated with a mastery
-    skills: list[str] = [
-        skills = [
-    # grammar
-    "grammar:present",
-    "grammar:past",
-    "grammar:future",
-    "grammar:articles",
-    "grammar:prepositions",
-    # vocab (words or topics)
-    "vocab:1",
-    "vocab:2",
-    "vocab:3",
-    "vocab:4",
-    "vocab:5",
-]
-    
-    # starting mastery level for each skill where mastery [0, 1]
-    init_mastery: float = 0.25
 
-    # strength update size after observation
+    skills: List[str] = field(default_factory=lambda: [
+        # grammar
+        "grammar:present",
+        "grammar:past",
+        "grammar:future",
+        "grammar:articles",
+        "grammar:prepositions",
+        # vocab
+        "vocab:1",
+        "vocab:2",
+        "vocab:3",
+        "vocab:4",
+        "vocab:5",
+    ])
+
+    init_mastery: float = 0.25
     learning_rate: float = 0.10
-    
-    # forgetting decay rate
-    decay_rate: float = 0.1
-    
-    # min and max mastery
-    min_mastery: float = 0
-    max_mastery: float = 1
-    
-    # interaction cycles in one tutoring session
-    episode_length: int = 200 
+    decay_rate: float = 0.01
+    min_mastery: float = 0.0
+    max_mastery: float = 1.0
+    episode_length: int = 200
+
+    # per-solver computational costs
+    solver_costs: Dict[str, float] = field(default_factory=lambda: {
+        "vocab_drill": 0.1,
+        "grammar_explanation": 0.3,
+        "mixed_quiz": 0.3,
+        "spaced_repetition": 0.2,
+        "free_form": 0.5,
+    })
+
+    cost_penalty_lambda: float = 0.1
+    mastery_noise_std: float = 0.05
+    discount_gamma: float = 0.99
