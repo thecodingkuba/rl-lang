@@ -7,11 +7,9 @@ from src.env.solvers.base import BaseSolver
 
 
 class FreeForm(BaseSolver):
-    """High-cost free-form generation exercising all skills broadly."""
-
     name = "free_form"
-    cost = 0.50                # SLAM: reverse_translate median 17s, scaled up
-    effectiveness = 2.0        # Roediger & Karpicke (2006): free recall ~2x recognition
+    cost = 0.50
+    effectiveness = 2.0
 
     def generate_question(
         self,

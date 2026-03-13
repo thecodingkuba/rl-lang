@@ -5,8 +5,6 @@ from numpy.typing import NDArray
 
 
 class SkillMap:
-    """Immutable bidirectional mapping between skill names and integer indices."""
-
     def __init__(self, skills: List[str], skill_difficulties: Dict[str, float] = None):
         if len(skills) != len(set(skills)):
             raise ValueError("Duplicate skills detected.")
@@ -27,7 +25,6 @@ class SkillMap:
         return len(self._index_to_skill)
 
     def __getitem__(self, key):
-        """Look up by int index or string name."""
         if isinstance(key, int):
             return self._index_to_skill[key]
         return self._skill_to_index[key]

@@ -7,11 +7,9 @@ from src.env.solvers.base import BaseSolver
 
 
 class GrammarExplanation(BaseSolver):
-    """Medium-cost explanation targeting a random grammar skill."""
-
     name = "grammar_explanation"
-    cost = 0.47                # SLAM: reverse_translate median 17s, scaled
-    effectiveness = 1.2        # DeKeyser (2003): explicit instruction < practice-based methods
+    cost = 0.47
+    effectiveness = 1.2
 
     def generate_question(
         self,

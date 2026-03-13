@@ -8,11 +8,9 @@ from src.env.core.skill_map import SkillMap
 
 
 class BaseSolver(ABC):
-    """Interface that every solver module must implement."""
-
     name: str
     cost: float
-    effectiveness: float  # learning rate multiplier (>1 means solver teaches better)
+    effectiveness: float
 
     @abstractmethod
     def generate_question(

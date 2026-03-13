@@ -12,14 +12,6 @@ from src.env.core.solver_router import build_solver_list
 
 
 class LanguageTutoringEnv(gym.Env):
-    """
-    Gymnasium environment for adaptive language tutoring.
-
-    Observation: belief state [mastery_estimates (K,), normalized_counts (K,)]
-    Action:      Discrete(5) — one per solver module
-    Reward:      delta_mean_proficiency - lambda * solver_cost
-    """
-
     metadata = {"render_modes": []}
 
     def __init__(self, config: Optional[EnvConfig] = None):
@@ -51,8 +43,6 @@ class LanguageTutoringEnv(gym.Env):
             self._rng = np.random.default_rng(seed)
 
         self.learner = Learner(self.config, self._rng)
-
-        # belief state starts at the prior (init_mastery, zero counts)
         self._belief_mastery = np.full(self.K, self.config.init_mastery, dtype=np.float64)
         self._belief_counts = np.zeros(self.K, dtype=np.float64)
         self._step_count = 0
@@ -64,21 +54,13 @@ class LanguageTutoringEnv(gym.Env):
         self, action: int
     ) -> Tuple[NDArray[np.float64], float, bool, bool, Dict[str, Any]]:
         solver = self.solvers[action]
-
-        # 1. solver generates a question using current belief
         question = solver.generate_question(self._belief_mastery, self.skill_map, self._rng)
-
-        # 2. learner responds (hidden ground-truth model)
         correct = self.learner.respond(question)
-
-        # 3. update hidden learner mastery
         self.learner.transition(question, correct)
 
-        # 4. apply forgetting to un-practiced skills
         practiced = set(question.skill_indices)
         self.learner.decay(practiced)
 
-        # 5. update belief state (same prediction-error rule, but on our estimates)
         for k in question.skill_indices:
             predicted = _sigmoid(self.config.sigmoid_beta * (self._belief_mastery[k] - question.difficulty))
             alpha_k = self.config.learning_rate / np.sqrt(1.0 + self._belief_counts[k])
@@ -88,12 +70,10 @@ class LanguageTutoringEnv(gym.Env):
             )
             self._belief_counts[k] += 1
 
-        # 6. reward = delta belief mastery - cost penalty
         new_mean = float(self._belief_mastery.mean())
         reward = (new_mean - self._prev_mean_mastery) - self.config.cost_penalty_lambda * question.cost
         self._prev_mean_mastery = new_mean
 
-        # 7. episode termination
         self._step_count += 1
         terminated = self._step_count >= self.config.episode_length
         truncated = False

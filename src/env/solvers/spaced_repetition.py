@@ -7,11 +7,9 @@ from src.env.solvers.base import BaseSolver
 
 
 class SpacedRepetition(BaseSolver):
-    """Targets the weakest skill by belief estimate — optimal challenge point."""
-
     name = "spaced_repetition"
-    cost = 0.15                # SLAM: listen+reverse_tap blend
-    effectiveness = 1.5        # Cepeda et al. (2006): spaced practice ~1.5x massed practice
+    cost = 0.15
+    effectiveness = 1.5
 
     def generate_question(
         self,

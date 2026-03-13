@@ -3,9 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class AgentConfig:
-    """Configuration for the routing agent."""
-
-    algorithm: str = "ppo"  # ppo | dqn | linucb | random
+    algorithm: str = "ppo"
     total_timesteps: int = 1_000_000
     learning_rate: float = 3e-4
     gamma: float = 0.99

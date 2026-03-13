@@ -1,18 +1,3 @@
-"""
-Model-Based RL via learned transition/reward models + Model Predictive Control.
-
-Pipeline:
-  1. Collect (obs, action, reward, next_obs) transitions from random rollouts
-  2. Train an MLP transition model:  f(obs, action_onehot) -> next_obs
-  3. Train an MLP reward model:      g(obs, action_onehot) -> reward
-  4. At test time, use MPC: simulate H steps ahead for each action sequence,
-     pick the first action of the best trajectory.
-"""
-
-import os
-import pickle
-from pathlib import Path
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -25,8 +10,6 @@ from src.env.env import LanguageTutoringEnv
 
 
 class TransitionModel(nn.Module):
-    """Predicts next_obs given (obs, action_onehot)."""
-
     def __init__(self, obs_dim: int, n_actions: int, hidden: int = 128):
         super().__init__()
         self.net = nn.Sequential(
@@ -43,8 +26,6 @@ class TransitionModel(nn.Module):
 
 
 class RewardModel(nn.Module):
-    """Predicts scalar reward given (obs, action_onehot)."""
-
     def __init__(self, obs_dim: int, n_actions: int, hidden: int = 128):
         super().__init__()
         self.net = nn.Sequential(
@@ -61,14 +42,6 @@ class RewardModel(nn.Module):
 
 
 class MPCPolicy:
-    """
-    Model Predictive Control using learned transition and reward models.
-
-    At each step, simulates all possible action sequences for H steps,
-    evaluates cumulative reward, and picks the first action of the best
-    trajectory. Uses random shooting for tractability.
-    """
-
     def __init__(
         self,
         transition_model: TransitionModel,
@@ -86,7 +59,6 @@ class MPCPolicy:
         self.n_trajectories = n_trajectories
         self.gamma = gamma
         self.device = device
-
         self.transition_model.eval()
         self.reward_model.eval()
 
@@ -95,7 +67,6 @@ class MPCPolicy:
             obs_t = torch.tensor(obs, dtype=torch.float32, device=self.device)
             obs_batch = obs_t.unsqueeze(0).expand(self.n_trajectories, -1)
 
-            # sample random action sequences: (n_traj, horizon)
             action_seqs = torch.randint(
                 0, self.n_actions, (self.n_trajectories, self.horizon),
                 device=self.device,
@@ -110,13 +81,10 @@ class MPCPolicy:
                     self.n_trajectories, self.n_actions, device=self.device
                 )
                 action_onehot.scatter_(1, actions.unsqueeze(1), 1.0)
-
                 reward = self.reward_model(current_obs, action_onehot)
                 cumulative_rewards += (self.gamma ** t) * reward
-
                 current_obs = self.transition_model(current_obs, action_onehot)
 
-            # group trajectories by first action, pick the best mean
             first_actions = action_seqs[:, 0]
             best_action = 0
             best_value = -float("inf")
@@ -139,7 +107,6 @@ def collect_transitions(
     n_episodes: int = 2000,
     seed: int = 0,
 ) -> dict:
-    """Collect transitions from random rollouts."""
     env = LanguageTutoringEnv(env_config)
     all_obs, all_actions, all_rewards, all_next_obs = [], [], [], []
 
@@ -175,7 +142,6 @@ def train_models(
     val_fraction: float = 0.1,
     verbose: bool = True,
 ) -> tuple:
-    """Train transition and reward models on collected data."""
     obs_dim = data["obs"].shape[1]
     device = "mps" if torch.backends.mps.is_available() else "cpu"
 
@@ -196,7 +162,6 @@ def train_models(
     )
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
-    # validation data
     val_obs = obs_all[val_idx].to(device)
     val_act = act_onehot[val_idx].to(device)
     val_rew = rewards_all[val_idx].to(device)
@@ -226,7 +191,6 @@ def train_models(
             rew_b = rew_b.to(device)
             next_b = next_b.to(device)
 
-            # transition model
             trans_opt.zero_grad()
             pred_next = trans_model(obs_b, act_b)
             t_loss = mse(pred_next, next_b)
@@ -234,7 +198,6 @@ def train_models(
             trans_opt.step()
             epoch_trans_loss += t_loss.item() * len(obs_b)
 
-            # reward model
             rew_opt.zero_grad()
             pred_rew = rew_model(obs_b, act_b)
             r_loss = mse(pred_rew, rew_b)
@@ -242,7 +205,6 @@ def train_models(
             rew_opt.step()
             epoch_rew_loss += r_loss.item() * len(obs_b)
 
-        # validation
         trans_model.eval()
         rew_model.eval()
         with torch.no_grad():

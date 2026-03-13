@@ -1,12 +1,3 @@
-"""
-Hyperparameter sweep for PPO: learning rate x cost_penalty_lambda.
-Trains shorter runs (200K steps) and evaluates each on 50 episodes.
-Produces a results table for the paper.
-
-Usage:
-    python3 -m src.hyperparam_sweep
-"""
-
 import os
 import itertools
 from pathlib import Path

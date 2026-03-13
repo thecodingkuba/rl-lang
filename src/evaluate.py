@@ -1,12 +1,3 @@
-"""
-Evaluation script: loads all four trained policies, runs each on
-N fresh simulated learners, and produces comparison tables + plots.
-
-Usage:
-    python -m src.evaluate
-    python -m src.evaluate --no-wandb
-"""
-
 import argparse
 import os
 import pickle
@@ -28,12 +19,10 @@ try:
 except ImportError:
     WANDB_AVAILABLE = False
 
-
 N_EVAL_LEARNERS = 100
 
 
 def load_policies(model_dir: str, obs_dim: int) -> Dict[str, object]:
-    """Load all four trained policies."""
     policies = {}
 
     ppo_path = os.path.join(model_dir, "ppo", "best_model.zip")
@@ -66,7 +55,6 @@ def load_policies(model_dir: str, obs_dim: int) -> Dict[str, object]:
 
 
 def evaluate_policy(policy, env: LanguageTutoringEnv, n_episodes: int, base_seed: int = 1000):
-    """Run a policy for n_episodes and collect metrics."""
     episode_rewards: List[float] = []
     final_proficiencies: List[float] = []
     episode_costs: List[float] = []
@@ -121,7 +109,6 @@ def plot_results(results: Dict[str, dict], results_dir: str):
     colors = {"PPO": "#4C72B0", "DQN": "#55A868", "LinUCB": "#C44E52", "RANDOM": "#8172B2", "Curriculum": "#CCB974", "MPC": "#DD8452"}
     bar_colors = [colors.get(m, "#333333") for m in methods]
 
-    # --- bar chart: proficiency, reward, and cost ---
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
     axes[0].bar(methods, proficiencies, yerr=prof_stds, capsize=5, color=bar_colors)
@@ -143,7 +130,6 @@ def plot_results(results: Dict[str, dict], results_dir: str):
     plt.savefig(os.path.join(results_dir, "comparison_bars.png"), dpi=150)
     plt.close()
 
-    # --- proficiency vs cost scatter ---
     fig, ax = plt.subplots(figsize=(8, 6))
     for m in methods:
         ax.errorbar(
@@ -161,9 +147,7 @@ def plot_results(results: Dict[str, dict], results_dir: str):
     plt.savefig(os.path.join(results_dir, "proficiency_vs_cost.png"), dpi=150)
     plt.close()
 
-    # --- learning curves (mean mastery over episode steps) ---
     fig, ax = plt.subplots(figsize=(10, 6))
-
     for method_name, res in results.items():
         curves = res["mastery_curves"]
         max_len = max(len(c) for c in curves)
@@ -174,7 +158,6 @@ def plot_results(results: Dict[str, dict], results_dir: str):
         color = colors.get(method_name, "#333333")
         ax.plot(steps, mean_curve, label=method_name, color=color)
         ax.fill_between(steps, mean_curve - std_curve, mean_curve + std_curve, alpha=0.15, color=color)
-
     ax.set_xlabel("Timestep")
     ax.set_ylabel("Mean Belief Mastery")
     ax.set_title("Mastery Progression Over Episode")
@@ -183,17 +166,14 @@ def plot_results(results: Dict[str, dict], results_dir: str):
     plt.savefig(os.path.join(results_dir, "mastery_curves.png"), dpi=150)
     plt.close()
 
-    # --- solver distribution stacked bar ---
     solver_names = ["VocabDrill", "Grammar", "MixedQuiz", "SpacedRep", "FreeForm"]
     fig, ax = plt.subplots(figsize=(10, 5))
     x = np.arange(len(methods))
     bottom = np.zeros(len(methods))
-
     for s_idx, s_name in enumerate(solver_names):
         vals = [results[m]["solver_distribution"][s_idx] for m in methods]
         ax.bar(x, vals, bottom=bottom, label=s_name, width=0.5)
         bottom += vals
-
     ax.set_xticks(x)
     ax.set_xticklabels(methods)
     ax.set_ylabel("Proportion")
@@ -208,7 +188,7 @@ def plot_results(results: Dict[str, dict], results_dir: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate trained agents")
-    parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
+    parser.add_argument("--no-wandb", action="store_true")
     args = parser.parse_args()
 
     env_config = EnvConfig()
@@ -240,7 +220,6 @@ def main():
         print(f"Evaluating {name}...")
         results[name] = evaluate_policy(policy, env, N_EVAL_LEARNERS)
 
-    # print table
     print("\n" + "=" * 85)
     print(f"{'Method':<12} {'Final Proficiency':<22} {'Cumulative Reward':<22} {'Total Cost':<20}")
     print("=" * 85)
@@ -256,7 +235,6 @@ def main():
     plot_results(results, train_config.results_dir)
 
     if wb_run:
-        # log summary metrics
         for name, res in results.items():
             wandb.log({
                 f"{name}/proficiency_mean": res["mean_proficiency"],
@@ -269,13 +247,11 @@ def main():
             for i, s_name in enumerate(["vocab_drill", "grammar", "mixed_quiz", "spaced_rep", "free_form"]):
                 wandb.log({f"{name}/solver_{s_name}": res["solver_distribution"][i]})
 
-        # log plots as W&B artifacts
         for fname in ["comparison_bars.png", "mastery_curves.png", "solver_distribution.png", "proficiency_vs_cost.png"]:
             fpath = os.path.join(train_config.results_dir, fname)
             if os.path.exists(fpath):
                 wandb.log({fname.replace(".png", ""): wandb.Image(fpath)})
 
-        # log summary table
         table = wandb.Table(
             columns=["Method", "Proficiency", "Prof_Std", "Reward", "Reward_Std", "Cost", "Cost_Std"],
             data=[[name, res["mean_proficiency"], res["std_proficiency"],

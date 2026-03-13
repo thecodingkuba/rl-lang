@@ -3,8 +3,6 @@ from numpy.typing import NDArray
 
 
 class RandomPolicy:
-    """Uniformly random solver selection baseline."""
-
     def __init__(self, n_actions: int, seed: int = 42):
         self.n_actions = n_actions
         self.rng = np.random.default_rng(seed)

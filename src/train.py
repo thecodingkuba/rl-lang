@@ -1,19 +1,3 @@
-"""
-Training pipeline for all four methods:
-  - PPO  (Stable-Baselines3)
-  - DQN  (Stable-Baselines3)
-  - LinUCB contextual bandit
-  - Random baseline
-
-Usage:
-    python -m src.train --algo ppo
-    python -m src.train --algo dqn
-    python -m src.train --algo linucb
-    python -m src.train --algo random
-    python -m src.train --algo all
-    python -m src.train --algo all --no-wandb   # disable W&B logging
-"""
-
 import argparse
 import os
 import pickle
@@ -43,7 +27,6 @@ except ImportError:
 
 
 def _wandb_config(env_config, agent_config, train_config, algo):
-    """Flatten all configs into a single dict for W&B."""
     cfg = {"algorithm": algo}
     cfg.update({f"env/{k}": v for k, v in asdict(env_config).items()})
     cfg.update({f"agent/{k}": v for k, v in asdict(agent_config).items()})
@@ -52,7 +35,6 @@ def _wandb_config(env_config, agent_config, train_config, algo):
 
 
 def _init_wandb(algo, env_config, agent_config, train_config):
-    """Init a W&B run if enabled."""
     if not train_config.use_wandb or not WANDB_AVAILABLE:
         return None
     run = wandb.init(
@@ -164,7 +146,6 @@ def train_baseline(
     agent_config: AgentConfig,
     train_config: TrainConfig,
 ):
-    """Train LinUCB or Random via a simple rollout loop with W&B logging."""
     print(f"=== Training {algo_name.upper()} ===")
     run = _init_wandb(algo_name, env_config, agent_config, train_config)
 
@@ -237,7 +218,6 @@ def train_baseline(
 
 
 def train_curriculum(env_config: EnvConfig, train_config: TrainConfig):
-    """Curriculum needs no training — just instantiate and save."""
     print("=== Saving Curriculum Policy ===")
     policy = CurriculumPolicy(
         skill_names=env_config.skills,
@@ -252,7 +232,6 @@ def train_curriculum(env_config: EnvConfig, train_config: TrainConfig):
 
 
 def train_mpc(env_config: EnvConfig, agent_config: AgentConfig, train_config: TrainConfig):
-    """Collect random transitions, train world model, build MPC policy."""
     print("=== Training Model-Based MPC ===")
     run = _init_wandb("mpc", env_config, agent_config, train_config)
 
@@ -288,13 +267,8 @@ def main():
         type=str,
         default="all",
         choices=["ppo", "dqn", "linucb", "random", "curriculum", "mpc", "all"],
-        help="Which algorithm to train",
     )
-    parser.add_argument(
-        "--no-wandb",
-        action="store_true",
-        help="Disable W&B logging",
-    )
+    parser.add_argument("--no-wandb", action="store_true")
     args = parser.parse_args()
 
     env_config = EnvConfig()
@@ -305,8 +279,7 @@ def main():
         train_config.use_wandb = False
 
     if train_config.use_wandb and not WANDB_AVAILABLE:
-        print("WARNING: wandb not installed. Run `pip install wandb` to enable logging.")
-        print("Continuing without W&B...\n")
+        print("WARNING: wandb not installed. Continuing without W&B...\n")
 
     Path(train_config.model_dir).mkdir(parents=True, exist_ok=True)
     Path(train_config.log_dir).mkdir(parents=True, exist_ok=True)

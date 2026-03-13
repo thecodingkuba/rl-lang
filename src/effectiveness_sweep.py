@@ -1,12 +1,3 @@
-"""
-Effectiveness multiplier robustness sweep.
-Scales ALL solver effectiveness values by a global factor and trains PPO + Random
-baseline at each setting to check that PPO's advantage is robust.
-
-Usage:
-    python3 -m src.effectiveness_sweep
-"""
-
 import os
 import pickle
 from copy import deepcopy
@@ -40,7 +31,6 @@ BASE_EFFECTIVENESS = {
 
 
 def patch_solver_effectiveness(env, scale):
-    """Scale the effectiveness of all solvers in an environment."""
     for solver in env.solvers:
         solver.effectiveness = BASE_EFFECTIVENESS[solver.name] * scale
 
@@ -94,7 +84,6 @@ def main():
             f"{k}={v*scale:.2f}" for k, v in BASE_EFFECTIVENESS.items()))
         print(f"{'='*60}")
 
-        # Train PPO
         print("  Training PPO...")
         vec_env = make_vec_env(make_env_factory(env_config, scale), n_envs=4, seed=SEED)
         model = PPO(
@@ -113,7 +102,6 @@ def main():
 
         ppo_policy = SB3PolicyWrapper(PPO.load(save_path))
 
-        # Train LinUCB
         print("  Training LinUCB...")
         linucb = LinUCB(n_actions=5, obs_dim=obs_dim, alpha=1.0)
         linucb_env = LanguageTutoringEnv(env_config)
@@ -132,17 +120,14 @@ def main():
             episode += 1
         linucb_env.close()
 
-        # Random baseline (no training needed)
         random_policy = RandomPolicy(n_actions=5, seed=SEED)
 
-        # Evaluate all three
         print("  Evaluating...")
         for name, policy in [("PPO", ppo_policy), ("LinUCB", linucb), ("Random", random_policy)]:
             pm, ps, rm, rs, cm, cs = evaluate(policy, env_config, scale, N_EVAL)
             results.append((scale, name, pm, ps, rm, rs, cm, cs))
             print(f"    {name:<8} Prof: {pm:.3f}±{ps:.3f}  Rew: {rm:+.3f}±{rs:.3f}  Cost: {cm:.1f}±{cs:.1f}")
 
-    # Print summary
     print(f"\n\n{'='*90}")
     print("Effectiveness Robustness Sweep (200K steps, 50 eval episodes)")
     print(f"{'='*90}")
@@ -151,7 +136,6 @@ def main():
     for scale, name, pm, ps, rm, rs, cm, cs in results:
         print(f"{scale:<8} {name:<10} {pm:.3f} ± {ps:.3f}     {rm:+.3f} ± {rs:.3f}     {cm:.1f} ± {cs:.1f}")
 
-    # Save CSV
     results_path = os.path.join(train_config.results_dir, "effectiveness_sweep.txt")
     Path(train_config.results_dir).mkdir(parents=True, exist_ok=True)
     with open(results_path, "w") as f:

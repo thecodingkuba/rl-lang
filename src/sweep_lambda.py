@@ -1,11 +1,3 @@
-"""
-Lambda sweep: train and evaluate all methods across varying cost_penalty_lambda
-values to study the compute-learning tradeoff.
-
-Usage:
-    python3 -m src.sweep_lambda
-"""
-
 import os
 import pickle
 from copy import deepcopy
@@ -34,7 +26,6 @@ def train_and_eval_for_lambda(
     agent_config: AgentConfig,
     base_train_config: TrainConfig,
 ) -> Dict[str, dict]:
-    """Train all 4 methods at a given lambda, then evaluate each."""
     env_config = EnvConfig(cost_penalty_lambda=lam)
     obs_dim = 2 * len(env_config.skills)
 
@@ -47,7 +38,6 @@ def train_and_eval_for_lambda(
 
     policies = {}
 
-    # --- PPO ---
     print(f"  [lambda={lam}] Training PPO...")
     from stable_baselines3.common.env_util import make_vec_env
 
@@ -64,7 +54,6 @@ def train_and_eval_for_lambda(
     policies["PPO"] = SB3PolicyWrapper(ppo)
     vec_env.close()
 
-    # --- DQN ---
     print(f"  [lambda={lam}] Training DQN...")
     dqn_env = LanguageTutoringEnv(env_config)
     dqn = DQN(
@@ -77,7 +66,6 @@ def train_and_eval_for_lambda(
     policies["DQN"] = SB3PolicyWrapper(dqn)
     dqn_env.close()
 
-    # --- LinUCB ---
     print(f"  [lambda={lam}] Training LinUCB...")
     linucb = LinUCB(n_actions=5, obs_dim=obs_dim, alpha=agent_config.linucb_alpha)
     env = LanguageTutoringEnv(env_config)
@@ -96,10 +84,8 @@ def train_and_eval_for_lambda(
     policies["LinUCB"] = linucb
     env.close()
 
-    # --- Random ---
     policies["Random"] = RandomPolicy(n_actions=5, seed=train_config.seed)
 
-    # --- Evaluate all ---
     results = {}
     eval_env = LanguageTutoringEnv(env_config)
     for name, pol in policies.items():
@@ -140,7 +126,6 @@ def main():
         for name, res in all_results[lam].items():
             print(f"  {name:<10} prof={res['mean_proficiency']:.3f}  reward={res['mean_reward']:.2f}")
 
-    # --- Plot: proficiency vs lambda ---
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     colors = {"PPO": "#4C72B0", "DQN": "#55A868", "LinUCB": "#C44E52", "Random": "#8172B2"}
 
@@ -149,7 +134,6 @@ def main():
         stds = [all_results[l][method]["std_proficiency"] for l in LAMBDAS]
         axes[0].errorbar(LAMBDAS, profs, yerr=stds, marker="o", label=method,
                          color=colors[method], capsize=4)
-
     axes[0].set_xlabel("Cost Penalty (lambda)")
     axes[0].set_ylabel("Final Proficiency")
     axes[0].set_title("Proficiency vs Cost Penalty")
@@ -161,7 +145,6 @@ def main():
         stds = [all_results[l][method]["std_reward"] for l in LAMBDAS]
         axes[1].errorbar(LAMBDAS, rews, yerr=stds, marker="o", label=method,
                          color=colors[method], capsize=4)
-
     axes[1].set_xlabel("Cost Penalty (lambda)")
     axes[1].set_ylabel("Cumulative Reward")
     axes[1].set_title("Reward vs Cost Penalty")
@@ -172,7 +155,6 @@ def main():
     plt.savefig("sweep_results/lambda_sweep.png", dpi=150)
     plt.close()
 
-    # --- Print summary table ---
     print(f"\n\n{'='*80}")
     print(f"{'Lambda':<10}", end="")
     for method in METHODS:

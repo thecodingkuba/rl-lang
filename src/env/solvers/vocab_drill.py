@@ -7,11 +7,9 @@ from src.env.solvers.base import BaseSolver
 
 
 class VocabDrill(BaseSolver):
-    """Low-cost drill targeting a single random vocabulary skill."""
-
     name = "vocab_drill"
-    cost = 0.10                # SLAM: reverse_tap median 8s
-    effectiveness = 1.0        # baseline: recognition/tap (Karpicke & Roediger 2008)
+    cost = 0.10
+    effectiveness = 1.0
 
     def generate_question(
         self,

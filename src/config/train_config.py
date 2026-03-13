@@ -3,8 +3,6 @@ from dataclasses import dataclass
 
 @dataclass
 class TrainConfig:
-    """Configuration for the training pipeline."""
-
     seed: int = 42
     log_dir: str = "logs"
     model_dir: str = "models"
