@@ -10,8 +10,8 @@ class SpacedRepetition(BaseSolver):
     """Targets the weakest skill by belief estimate — optimal challenge point."""
 
     name = "spaced_repetition"
-    cost = 0.2
-    effectiveness = 2.0  # targeting weak spots is pedagogically most efficient
+    cost = 0.15                # SLAM: listen+reverse_tap blend
+    effectiveness = 1.5        # Cepeda et al. (2006): spaced practice ~1.5x massed practice
 
     def generate_question(
         self,
@@ -20,7 +20,7 @@ class SpacedRepetition(BaseSolver):
         rng: np.random.Generator,
     ) -> Question:
         weakest = int(np.argmin(mastery_estimate))
-        difficulty = np.clip(mastery_estimate[weakest] + rng.normal(0, 0.05), 0.05, 0.95)
+        difficulty = np.clip(skill_map.skill_difficulties[weakest] + rng.normal(0, 0.05), 0.05, 0.95)
         return Question(
             skill_indices=[weakest], difficulty=float(difficulty),
             cost=self.cost, effectiveness=self.effectiveness,

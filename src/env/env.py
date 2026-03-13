@@ -25,7 +25,7 @@ class LanguageTutoringEnv(gym.Env):
     def __init__(self, config: Optional[EnvConfig] = None):
         super().__init__()
         self.config = config or EnvConfig()
-        self.skill_map = SkillMap(self.config.skills)
+        self.skill_map = SkillMap(self.config.skills, self.config.skill_difficulties)
         self.K = len(self.skill_map)
         self.solvers = build_solver_list()
 

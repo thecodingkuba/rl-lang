@@ -35,18 +35,32 @@ class EnvConfig:
     max_mastery: float = 1.0
     episode_length: int = 200
 
-    # per-solver computational costs
+    # per-solver computational costs (fitted from SLAM exercise time data)
     solver_costs: Dict[str, float] = field(default_factory=lambda: {
-        "vocab_drill": 0.1,
-        "grammar_explanation": 0.3,
-        "mixed_quiz": 0.3,
-        "spaced_repetition": 0.2,
-        "free_form": 0.5,
+        "vocab_drill": 0.10,
+        "grammar_explanation": 0.47,
+        "mixed_quiz": 0.43,
+        "spaced_repetition": 0.15,
+        "free_form": 0.50,
     })
 
     cost_penalty_lambda: float = 0.01
     mastery_noise_std: float = 0.05
     discount_gamma: float = 0.99
+
+    # per-skill intrinsic difficulties fitted from Duolingo SLAM
+    skill_difficulties: Dict[str, float] = field(default_factory=lambda: {
+        "grammar:present": 0.124,
+        "grammar:past": 0.140,
+        "grammar:future": 0.500,
+        "grammar:articles": 0.088,
+        "grammar:prepositions": 0.180,
+        "vocab:1": 0.124,
+        "vocab:2": 0.093,
+        "vocab:3": 0.145,
+        "vocab:4": 0.127,
+        "vocab:5": 0.131,
+    })
 
     @classmethod
     def from_fitted(cls, json_path: str = "data/fitted_params.json", **overrides) -> "EnvConfig":
@@ -54,9 +68,13 @@ class EnvConfig:
         with open(json_path) as f:
             data = json.load(f)
         env_params = data["env_params"]
-        return cls(
+        skill_diffs = data.get("skill_difficulties", {})
+        kwargs = dict(
             learning_rate=env_params["learning_rate"],
             decay_rate=env_params["decay_rate"],
             sigmoid_beta=env_params["beta"],
-            **overrides,
         )
+        if skill_diffs:
+            kwargs["skill_difficulties"] = skill_diffs
+        kwargs.update(overrides)
+        return cls(**kwargs)

@@ -52,11 +52,15 @@ def load_policies(model_dir: str, obs_dim: int) -> Dict[str, object]:
         if os.path.exists(dqn_final):
             policies["DQN"] = SB3PolicyWrapper(DQN.load(dqn_final))
 
-    for name in ["linucb", "random"]:
+    for name in ["linucb", "random", "curriculum", "bc", "mpc"]:
         pkl_path = os.path.join(model_dir, name, "policy.pkl")
         if os.path.exists(pkl_path):
             with open(pkl_path, "rb") as f:
-                policies[name.upper() if name == "random" else "LinUCB"] = pickle.load(f)
+                label = {
+                    "linucb": "LinUCB", "random": "RANDOM",
+                    "curriculum": "Curriculum", "bc": "BC", "mpc": "MPC",
+                }[name]
+                policies[label] = pickle.load(f)
 
     return policies
 
@@ -65,24 +69,31 @@ def evaluate_policy(policy, env: LanguageTutoringEnv, n_episodes: int, base_seed
     """Run a policy for n_episodes and collect metrics."""
     episode_rewards: List[float] = []
     final_proficiencies: List[float] = []
+    episode_costs: List[float] = []
     solver_counts = np.zeros(env.action_space.n)
     all_mastery_curves: List[List[float]] = []
+    solver_costs = np.array([s.cost for s in env.solvers])
 
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=base_seed + ep)
+        if hasattr(policy, "reset"):
+            policy.reset()
         ep_reward = 0.0
+        ep_cost = 0.0
         done = False
         mastery_curve = [float(obs[: env.K].mean())]
 
         while not done:
             action = policy.select_action(obs)
             solver_counts[action] += 1
+            ep_cost += solver_costs[action]
             obs, reward, terminated, truncated, info = env.step(action)
             ep_reward += reward
             mastery_curve.append(float(obs[: env.K].mean()))
             done = terminated or truncated
 
         episode_rewards.append(ep_reward)
+        episode_costs.append(ep_cost)
         final_proficiencies.append(float(obs[: env.K].mean()))
         all_mastery_curves.append(mastery_curve)
 
@@ -91,6 +102,8 @@ def evaluate_policy(policy, env: LanguageTutoringEnv, n_episodes: int, base_seed
         "std_reward": np.std(episode_rewards),
         "mean_proficiency": np.mean(final_proficiencies),
         "std_proficiency": np.std(final_proficiencies),
+        "mean_cost": np.mean(episode_costs),
+        "std_cost": np.std(episode_costs),
         "solver_distribution": solver_counts / solver_counts.sum(),
         "mastery_curves": all_mastery_curves,
     }
@@ -105,25 +118,51 @@ def plot_results(results: Dict[str, dict], results_dir: str):
     rewards = [results[m]["mean_reward"] for m in methods]
     reward_stds = [results[m]["std_reward"] for m in methods]
 
-    # --- bar chart: final proficiency ---
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    colors = {"PPO": "#4C72B0", "DQN": "#55A868", "LinUCB": "#C44E52", "RANDOM": "#8172B2", "Curriculum": "#CCB974", "BC": "#64B5CD", "MPC": "#DD8452"}
+    bar_colors = [colors.get(m, "#333333") for m in methods]
 
-    axes[0].bar(methods, proficiencies, yerr=prof_stds, capsize=5, color=["#4C72B0", "#55A868", "#C44E52", "#8172B2"])
+    # --- bar chart: proficiency, reward, and cost ---
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+    axes[0].bar(methods, proficiencies, yerr=prof_stds, capsize=5, color=bar_colors)
     axes[0].set_ylabel("Final Proficiency")
     axes[0].set_title("Final Proficiency by Method")
     axes[0].set_ylim(0, 1)
 
-    axes[1].bar(methods, rewards, yerr=reward_stds, capsize=5, color=["#4C72B0", "#55A868", "#C44E52", "#8172B2"])
+    axes[1].bar(methods, rewards, yerr=reward_stds, capsize=5, color=bar_colors)
     axes[1].set_ylabel("Cumulative Reward")
     axes[1].set_title("Cumulative Reward by Method")
+
+    costs = [results[m]["mean_cost"] for m in methods]
+    cost_stds = [results[m]["std_cost"] for m in methods]
+    axes[2].bar(methods, costs, yerr=cost_stds, capsize=5, color=bar_colors)
+    axes[2].set_ylabel("Total Solver Cost")
+    axes[2].set_title("Computational Cost by Method")
 
     plt.tight_layout()
     plt.savefig(os.path.join(results_dir, "comparison_bars.png"), dpi=150)
     plt.close()
 
+    # --- proficiency vs cost scatter ---
+    fig, ax = plt.subplots(figsize=(8, 6))
+    for m in methods:
+        ax.errorbar(
+            results[m]["mean_cost"], results[m]["mean_proficiency"],
+            xerr=results[m]["std_cost"], yerr=results[m]["std_proficiency"],
+            fmt="o", markersize=10, capsize=5,
+            color=colors.get(m, "#333333"), label=m,
+        )
+    ax.set_xlabel("Total Solver Cost (per episode)")
+    ax.set_ylabel("Final Proficiency")
+    ax.set_title("Proficiency vs Computational Cost")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_dir, "proficiency_vs_cost.png"), dpi=150)
+    plt.close()
+
     # --- learning curves (mean mastery over episode steps) ---
     fig, ax = plt.subplots(figsize=(10, 6))
-    colors = {"PPO": "#4C72B0", "DQN": "#55A868", "LinUCB": "#C44E52", "RANDOM": "#8172B2"}
 
     for method_name, res in results.items():
         curves = res["mastery_curves"]
@@ -202,16 +241,17 @@ def main():
         results[name] = evaluate_policy(policy, env, N_EVAL_LEARNERS)
 
     # print table
-    print("\n" + "=" * 65)
-    print(f"{'Method':<12} {'Final Proficiency':<22} {'Cumulative Reward':<22}")
-    print("=" * 65)
+    print("\n" + "=" * 85)
+    print(f"{'Method':<12} {'Final Proficiency':<22} {'Cumulative Reward':<22} {'Total Cost':<20}")
+    print("=" * 85)
     for name, res in results.items():
         print(
             f"{name:<12} "
             f"{res['mean_proficiency']:.3f} ± {res['std_proficiency']:.3f}       "
-            f"{res['mean_reward']:.2f} ± {res['std_reward']:.2f}"
+            f"{res['mean_reward']:.2f} ± {res['std_reward']:.2f}          "
+            f"{res['mean_cost']:.1f} ± {res['std_cost']:.1f}"
         )
-    print("=" * 65)
+    print("=" * 85)
 
     plot_results(results, train_config.results_dir)
 
@@ -223,21 +263,24 @@ def main():
                 f"{name}/proficiency_std": res["std_proficiency"],
                 f"{name}/reward_mean": res["mean_reward"],
                 f"{name}/reward_std": res["std_reward"],
+                f"{name}/cost_mean": res["mean_cost"],
+                f"{name}/cost_std": res["std_cost"],
             })
             for i, s_name in enumerate(["vocab_drill", "grammar", "mixed_quiz", "spaced_rep", "free_form"]):
                 wandb.log({f"{name}/solver_{s_name}": res["solver_distribution"][i]})
 
         # log plots as W&B artifacts
-        for fname in ["comparison_bars.png", "mastery_curves.png", "solver_distribution.png"]:
+        for fname in ["comparison_bars.png", "mastery_curves.png", "solver_distribution.png", "proficiency_vs_cost.png"]:
             fpath = os.path.join(train_config.results_dir, fname)
             if os.path.exists(fpath):
                 wandb.log({fname.replace(".png", ""): wandb.Image(fpath)})
 
         # log summary table
         table = wandb.Table(
-            columns=["Method", "Proficiency", "Prof_Std", "Reward", "Reward_Std"],
+            columns=["Method", "Proficiency", "Prof_Std", "Reward", "Reward_Std", "Cost", "Cost_Std"],
             data=[[name, res["mean_proficiency"], res["std_proficiency"],
-                    res["mean_reward"], res["std_reward"]]
+                    res["mean_reward"], res["std_reward"],
+                    res["mean_cost"], res["std_cost"]]
                    for name, res in results.items()],
         )
         wandb.log({"results_table": table})

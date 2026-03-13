@@ -1,25 +1,52 @@
 {
   "fitted_raw": {
-    "beta": 5.228475482875026,
-    "alpha_0": 0.6392656798094986,
+    "beta": 5.0358977963590466,
+    "alpha_0": 0.6388470398024338,
     "delta_per_day": 0.0001
   },
   "env_params": {
-    "beta": 5.228475482875026,
-    "learning_rate": 0.6392656798094986,
+    "beta": 5.0358977963590466,
+    "learning_rate": 0.6388470398024338,
     "decay_rate": 5.000248766151572e-07,
     "note": "Fitted from Duolingo SLAM data. delta_per_day=0.000100 converted to delta_per_step=0.000001 assuming 200 steps/day."
   },
   "skill_difficulties": {
-    "grammar:present": 0.12388732915469658,
-    "grammar:past": 0.14002428166734115,
+    "grammar:present": 0.13199925304685478,
+    "grammar:past": 0.1508162490508732,
     "grammar:future": 0.5,
-    "grammar:articles": 0.08796016560367026,
-    "grammar:prepositions": 0.17951977401129948,
-    "vocab:1": 0.12400547696595521,
-    "vocab:2": 0.09323021796617059,
-    "vocab:3": 0.14472988688021993,
-    "vocab:4": 0.12693682745988977,
-    "vocab:5": 0.13099494097807762
+    "grammar:articles": 0.09447581091553203,
+    "grammar:prepositions": 0.19080829756795425,
+    "vocab:1": 0.13845160434085746,
+    "vocab:2": 0.16358128670731842,
+    "vocab:3": 0.09047996694074245,
+    "vocab:4": 0.12450173767251815,
+    "vocab:5": 0.1617805148614494
+  },
+  "solver_params": {
+    "vocab_drill": {
+      "effectiveness": 1.0,
+      "cost": 0.1,
+      "source_format": "reverse_tap"
+    },
+    "grammar_explanation": {
+      "effectiveness": 0.8898370824400886,
+      "cost": 0.47000000000000003,
+      "source_format": "reverse_translate (scaled: explicit grammar instruction)"
+    },
+    "mixed_quiz": {
+      "effectiveness": 0.9341797172164203,
+      "cost": 0.425,
+      "source_format": "listen (scaled: multi-modal quiz)"
+    },
+    "spaced_repetition": {
+      "effectiveness": 0.9808887030772414,
+      "cost": 0.15000000000000002,
+      "source_format": "listen+reverse_tap blend (targeted review)"
+    },
+    "free_form": {
+      "effectiveness": 0.9835041437495718,
+      "cost": 0.5,
+      "source_format": "reverse_translate (scaled: open-ended production)"
+    }
   }
 }

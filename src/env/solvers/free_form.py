@@ -10,8 +10,8 @@ class FreeForm(BaseSolver):
     """High-cost free-form generation exercising all skills broadly."""
 
     name = "free_form"
-    cost = 0.5
-    effectiveness = 2.5  # most expensive but strongest learning gains
+    cost = 0.50                # SLAM: reverse_translate median 17s, scaled up
+    effectiveness = 2.0        # Roediger & Karpicke (2006): free recall ~2x recognition
 
     def generate_question(
         self,
@@ -20,8 +20,8 @@ class FreeForm(BaseSolver):
         rng: np.random.Generator,
     ) -> Question:
         indices = skill_map.all_indices
-        mean_mastery = mastery_estimate[indices].mean()
-        difficulty = np.clip(mean_mastery + rng.normal(0, 0.15), 0.05, 0.95)
+        mean_diff = skill_map.skill_difficulties[indices].mean()
+        difficulty = np.clip(mean_diff + rng.normal(0, 0.15), 0.05, 0.95)
         return Question(
             skill_indices=indices, difficulty=float(difficulty),
             cost=self.cost, effectiveness=self.effectiveness,

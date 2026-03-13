@@ -31,6 +31,9 @@ from src.config.train_config import TrainConfig
 from src.env.env import LanguageTutoringEnv
 from src.baselines.random_policy import RandomPolicy
 from src.baselines.linucb import LinUCB
+from src.baselines.curriculum import CurriculumPolicy
+from src.baselines.behavior_cloning import collect_demonstrations, train_bc, BCPolicy
+from src.baselines.model_based import collect_transitions, train_models, MPCPolicy
 
 try:
     import wandb
@@ -234,13 +237,91 @@ def train_baseline(
         run.finish()
 
 
+def train_curriculum(env_config: EnvConfig, train_config: TrainConfig):
+    """Curriculum needs no training — just instantiate and save."""
+    print("=== Saving Curriculum Policy ===")
+    policy = CurriculumPolicy(
+        skill_names=env_config.skills,
+        skill_difficulties=env_config.skill_difficulties,
+        episode_length=env_config.episode_length,
+    )
+    save_dir = os.path.join(train_config.model_dir, "curriculum")
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
+    with open(os.path.join(save_dir, "policy.pkl"), "wb") as f:
+        pickle.dump(policy, f)
+    print(f"Curriculum policy saved to {save_dir}/policy.pkl")
+
+
+def train_bc_policy(env_config: EnvConfig, agent_config: AgentConfig, train_config: TrainConfig):
+    """Collect DQN demonstrations, then train a BC classifier."""
+    print("=== Training Behavior Cloning (imitating DQN) ===")
+    run = _init_wandb("bc", env_config, agent_config, train_config)
+
+    dqn_dir = os.path.join(train_config.model_dir, "dqn")
+    if not os.path.exists(dqn_dir):
+        print("ERROR: DQN model not found. Train DQN first: python -m src.train --algo dqn")
+        return
+
+    print("  Collecting 500 episodes of DQN demonstrations...")
+    obs, actions = collect_demonstrations(
+        env_config, dqn_dir, n_episodes=500, seed=train_config.seed
+    )
+    print(f"  Collected {len(obs)} (obs, action) pairs")
+
+    action_counts = np.bincount(actions, minlength=5)
+    print(f"  Action distribution: {action_counts / action_counts.sum()}")
+
+    model = train_bc(obs, actions, n_actions=5, epochs=50, verbose=True)
+    policy = BCPolicy(model)
+
+    save_dir = os.path.join(train_config.model_dir, "bc")
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
+    with open(os.path.join(save_dir, "policy.pkl"), "wb") as f:
+        pickle.dump(policy, f)
+    print(f"  BC policy saved to {save_dir}/policy.pkl")
+
+    if run:
+        wandb.log({"bc/n_demonstrations": len(obs)})
+        run.finish()
+
+
+def train_mpc(env_config: EnvConfig, agent_config: AgentConfig, train_config: TrainConfig):
+    """Collect random transitions, train world model, build MPC policy."""
+    print("=== Training Model-Based MPC ===")
+    run = _init_wandb("mpc", env_config, agent_config, train_config)
+
+    n_collect_episodes = 2000
+    print(f"  Collecting {n_collect_episodes} episodes of random transitions...")
+    data = collect_transitions(env_config, n_episodes=n_collect_episodes, seed=train_config.seed)
+    print(f"  Collected {len(data['obs'])} transitions")
+
+    print("  Training transition and reward models...")
+    trans_model, rew_model = train_models(data, n_actions=5, epochs=50, verbose=True)
+
+    policy = MPCPolicy(
+        trans_model, rew_model,
+        n_actions=5, horizon=5, n_trajectories=200,
+        gamma=agent_config.gamma,
+    )
+
+    save_dir = os.path.join(train_config.model_dir, "mpc")
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
+    with open(os.path.join(save_dir, "policy.pkl"), "wb") as f:
+        pickle.dump(policy, f)
+    print(f"  MPC policy saved to {save_dir}/policy.pkl")
+
+    if run:
+        wandb.log({"mpc/n_transitions": len(data["obs"])})
+        run.finish()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train RL language tutoring agents")
     parser.add_argument(
         "--algo",
         type=str,
         default="all",
-        choices=["ppo", "dqn", "linucb", "random", "all"],
+        choices=["ppo", "dqn", "linucb", "random", "curriculum", "bc", "mpc", "all"],
         help="Which algorithm to train",
     )
     parser.add_argument(
@@ -269,6 +350,9 @@ def main():
         "dqn": lambda: train_dqn(env_config, agent_config, train_config),
         "linucb": lambda: train_baseline("linucb", env_config, agent_config, train_config),
         "random": lambda: train_baseline("random", env_config, agent_config, train_config),
+        "curriculum": lambda: train_curriculum(env_config, train_config),
+        "bc": lambda: train_bc_policy(env_config, agent_config, train_config),
+        "mpc": lambda: train_mpc(env_config, agent_config, train_config),
     }
 
     if args.algo == "all":

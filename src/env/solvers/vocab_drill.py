@@ -10,8 +10,8 @@ class VocabDrill(BaseSolver):
     """Low-cost drill targeting a single random vocabulary skill."""
 
     name = "vocab_drill"
-    cost = 0.1
-    effectiveness = 1.0  # baseline effectiveness
+    cost = 0.10                # SLAM: reverse_tap median 8s
+    effectiveness = 1.0        # baseline: recognition/tap (Karpicke & Roediger 2008)
 
     def generate_question(
         self,
@@ -20,7 +20,7 @@ class VocabDrill(BaseSolver):
         rng: np.random.Generator,
     ) -> Question:
         idx = rng.choice(skill_map.vocab_indices)
-        difficulty = np.clip(mastery_estimate[idx] + rng.normal(0, 0.1), 0.05, 0.95)
+        difficulty = np.clip(skill_map.skill_difficulties[idx] + rng.normal(0, 0.1), 0.05, 0.95)
         return Question(
             skill_indices=[idx], difficulty=float(difficulty),
             cost=self.cost, effectiveness=self.effectiveness,
