@@ -52,13 +52,13 @@ def load_policies(model_dir: str, obs_dim: int) -> Dict[str, object]:
         if os.path.exists(dqn_final):
             policies["DQN"] = SB3PolicyWrapper(DQN.load(dqn_final))
 
-    for name in ["linucb", "random", "curriculum", "bc", "mpc"]:
+    for name in ["linucb", "random", "curriculum", "mpc"]:
         pkl_path = os.path.join(model_dir, name, "policy.pkl")
         if os.path.exists(pkl_path):
             with open(pkl_path, "rb") as f:
                 label = {
                     "linucb": "LinUCB", "random": "RANDOM",
-                    "curriculum": "Curriculum", "bc": "BC", "mpc": "MPC",
+                    "curriculum": "Curriculum", "mpc": "MPC",
                 }[name]
                 policies[label] = pickle.load(f)
 
@@ -118,7 +118,7 @@ def plot_results(results: Dict[str, dict], results_dir: str):
     rewards = [results[m]["mean_reward"] for m in methods]
     reward_stds = [results[m]["std_reward"] for m in methods]
 
-    colors = {"PPO": "#4C72B0", "DQN": "#55A868", "LinUCB": "#C44E52", "RANDOM": "#8172B2", "Curriculum": "#CCB974", "BC": "#64B5CD", "MPC": "#DD8452"}
+    colors = {"PPO": "#4C72B0", "DQN": "#55A868", "LinUCB": "#C44E52", "RANDOM": "#8172B2", "Curriculum": "#CCB974", "MPC": "#DD8452"}
     bar_colors = [colors.get(m, "#333333") for m in methods]
 
     # --- bar chart: proficiency, reward, and cost ---

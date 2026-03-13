@@ -14,6 +14,7 @@
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{enumitem}
+\usepackage{multirow}
 \setlist{nosep,leftmargin=*}
 
 \title{
@@ -34,7 +35,7 @@
 \maketitle
 
 \begin{abstract}
-We frame adaptive language tutoring as a partially observable Markov decision process (POMDP) in which a routing agent selects among heterogeneous exercise types to maximize learner proficiency while minimizing cost. The simulated learner is calibrated from the Duolingo SLAM dataset via maximum likelihood estimation of an item response theory model. We compare seven methods---model-free RL (PPO, DQN), model-based planning (MPC), contextual bandits (LinUCB), behavior cloning, a hand-designed curriculum, and a random baseline. PPO achieves the best cost-adjusted reward while MPC matches its proficiency at higher cost, demonstrating that long-horizon planning over exercise selection yields meaningful gains over myopic and heuristic approaches.
+We frame adaptive language tutoring as a partially observable Markov decision process (POMDP) in which a routing agent selects among heterogeneous exercise types to maximize learner proficiency while minimizing cost. The simulated learner is calibrated from the Duolingo SLAM dataset via maximum likelihood estimation of an item response theory model. We compare six methods---model-free RL (PPO, DQN), model-based planning (MPC), contextual bandits (LinUCB), a hand-designed curriculum, and a random baseline. PPO achieves the best cost-adjusted reward while MPC matches its proficiency at higher cost, demonstrating that long-horizon planning over exercise selection yields meaningful gains over myopic and heuristic approaches.
 \end{abstract}
 
 %% ============================================================
@@ -43,9 +44,9 @@ We frame adaptive language tutoring as a partially observable Markov decision pr
 
 Intelligent tutoring systems must decide \emph{what to teach next}: given a learner's current knowledge state, which exercise type will produce the greatest learning gain? This is a sequential decision-making problem under uncertainty---the tutor cannot directly observe the learner's true mastery, only their responses to questions. Most existing systems rely on hand-designed curricula or simple heuristics that cannot adapt to individual learners \citep{doroudi2019tutoring}.
 
-We formalize this problem as a POMDP. \textbf{The input} to our system is a 20-dimensional belief state vector consisting of estimated per-skill mastery levels and normalized interaction counts across 10 language skills (5 grammar, 5 vocabulary). At each of 200 timesteps, the agent selects one of 5 solver modules---exercise types with distinct effectiveness-cost tradeoffs. \textbf{We then use} reinforcement learning (PPO, DQN), model-based planning (MPC with learned neural network world models), a contextual bandit (LinUCB), behavior cloning, a hand-designed curriculum, and a random baseline \textbf{to output} a solver selection policy that maximizes cumulative learner proficiency minus cost.
+We formalize this problem as a POMDP. \textbf{The input} to our system is a 20-dimensional belief state vector consisting of estimated per-skill mastery levels and normalized interaction counts across 10 language skills (5 grammar, 5 vocabulary). At each of 200 timesteps, the agent selects one of 5 solver modules---exercise types with distinct effectiveness-cost tradeoffs. \textbf{We then use} reinforcement learning (PPO, DQN), model-based planning (MPC with learned neural network world models), a contextual bandit (LinUCB), a hand-designed curriculum, and a random baseline \textbf{to output} a solver selection policy that maximizes cumulative learner proficiency minus cost.
 
-Our contributions are: (1) a Gymnasium environment for language tutoring with learner dynamics calibrated from real Duolingo data via MLE, (2) a comparison of seven methods across three paradigms (model-free RL, model-based RL, and supervised learning), and (3) empirical evidence that policy-gradient RL and model-based MPC significantly outperform myopic and heuristic approaches.
+Our contributions are: (1) a Gymnasium environment for language tutoring with learner dynamics calibrated from real Duolingo data via MLE, (2) a comparison of six methods across model-free RL, model-based RL, and heuristic baselines, and (3) empirical evidence that policy-gradient RL and model-based MPC significantly outperform myopic and heuristic approaches.
 
 %% ============================================================
 \section{Related Work}
@@ -58,7 +59,7 @@ Our contributions are: (1) a Gymnasium environment for language tutoring with le
 Item response theory (IRT) models learner correctness as a function of skill mastery and item difficulty \citep{embretson2013irt}. The Duolingo SLAM shared task \citep{duolingo2018slam} provided large-scale second language acquisition data. \citet{settles2018slam} proposed a half-life regression model combining spaced repetition with IRT-style features, achieving state-of-the-art error prediction on SLAM. We adopt a simpler IRT formulation but fit its parameters directly from SLAM via MLE.
 
 \textbf{Exercise effectiveness.}
-The testing effect---retrieval practice enhances retention more than passive review---is well-established \citep{roediger2006testing, karpicke2008retrieval}. Spaced practice yields superior retention over massed practice \citep{cepeda2006spacing}, while explicit grammar instruction shows smaller effect sizes than practice-based methods \citep{dekeyser2003implicit}. We use these findings to set solver effectiveness parameters.
+The testing effect---retrieval practice enhances retention more than passive review---is well-established. \citet{rowland2014testing} meta-analyzed 159 studies and found that recall-based tests yield larger retention benefits than recognition tests. \citet{roediger2006power} showed that free recall produces roughly twice the long-term retention gain of recognition-based review. Spaced practice produces a $d = 0.40$ advantage over massed practice across 317 experiments \citep{cepeda2006spacing}. Interleaving different problem types further improves retention: \citet{rohrer2007interleaving} found mixed practice nearly doubled test performance versus blocked practice. For grammar, \citet{spada2010explicit} meta-analyzed 41 L2 studies and found explicit instruction ($d = 1.0$) outperforms implicit instruction ($d = 0.65$), though both are smaller than practice-based testing effects. We use these relative effect sizes to set solver effectiveness multipliers (Table~\ref{tab:solvers}).
 
 \textbf{Algorithms.}
 We use PPO \citep{schulman2017ppo} and DQN \citep{mnih2015dqn} via Stable-Baselines3 \citep{sb3}, and LinUCB \citep{li2010linucb} as a contextual bandit.
@@ -73,13 +74,19 @@ We use PPO \citep{schulman2017ppo} and DQN \citep{mnih2015dqn} via Stable-Baseli
 
 \textbf{Feature extraction.} From each user's history we compute: per-skill mean correctness rate (used to estimate skill difficulty $d_k = 1 - \bar{c}_k$), per-format median completion time (for solver cost calibration), and chronological $(c_t, \hat{p}_t)$ prediction-error sequences (for MLE fitting of learning and decay rates).
 
-\textbf{Parameter fitting.} We fit three IRT parameters via MLE using L-BFGS-B:
+\textbf{Parameter fitting.} We fit three IRT parameters via maximum likelihood estimation (MLE). The learner model defines a generative process: for each interaction $t$ on skill $k$, the probability of a correct response is $p_t = \sigma(\beta(m_{k,t} - 0.5))$, where $m_{k,t}$ is the latent mastery. Between interactions, mastery decays via $m_{k,t} \leftarrow m_{k,t}(1-\delta)^{\Delta t}$, where $\Delta t$ is the time gap in days. After observing outcome $c_t \in \{0,1\}$, mastery updates via prediction-error learning: $m_{k,t} \leftarrow m_{k,t} + \frac{\alpha_0}{\sqrt{1+n_k}}(c_t - p_t)$. Since each observation is Bernoulli with parameter $p_t$, the log-likelihood over all $N$ observed interactions is:
+\begin{equation}
+\ell(\beta, \alpha_0, \delta) = \sum_{i=1}^{N} \left[ c_i \log p_i + (1 - c_i) \log(1 - p_i) \right]
+\end{equation}
+where $p_i$ depends on the full history of prior interactions for that user-skill pair through the recursive mastery updates. We maximize $\ell$ (equivalently minimize $-\ell/N$) using L-BFGS-B \citep{scipy} with bounds $\beta \in [0.5, 20]$, $\alpha_0 \in [0.01, 1]$, $\delta \in [10^{-4}, 0.5]$. The fitted values are:
 \begin{itemize}
-    \item \textbf{Sigmoid steepness} $\beta = 5.04$: controls $P(\text{correct}) = \sigma(\beta(m_k - d))$.
-    \item \textbf{Learning rate} $\alpha_0 = 0.64$: prediction-error update $m_k \leftarrow m_k + \frac{\alpha_0}{\sqrt{1+n_k}}(c - \hat{p})$.
-    \item \textbf{Decay rate} $\delta = 10^{-4}$/day: forgetting $m_k \leftarrow m_k(1-\delta)^{\Delta t}$.
+    \item \textbf{Sigmoid steepness} $\beta = 5.04$: controls the sharpness of the mastery-to-correctness mapping.
+    \item \textbf{Learning rate} $\alpha_0 = 0.64$: base magnitude of mastery updates, decaying as $1/\sqrt{1+n_k}$.
+    \item \textbf{Decay rate} $\delta = 10^{-4}$/day: rate of forgetting for unpracticed skills.
 \end{itemize}
 Per-skill difficulties range from 0.09 (articles) to 0.50 (future tense). Empirical median exercise times---\texttt{reverse\_tap}: 8s, \texttt{reverse\_translate}: 17s, \texttt{listen}: 19s---are normalized to $[0.1, 0.5]$ and mapped to our five solver modules.
+
+\textbf{Effectiveness calibration.} Solver effectiveness multipliers are set from relative effect sizes in the educational psychology literature. VocabDrill (recognition-based) serves as the $1.0\times$ baseline. SpacedRepetition is set to $1.5\times$ based on the $d=0.40$ spacing advantage from \citet{cepeda2006spacing}, which implies roughly 50\% greater retention than massed single-session practice. MixedQuiz is set to $1.4\times$ based on \citet{rohrer2007interleaving}, who found interleaved practice nearly doubled retention over blocked practice; we use a conservative estimate since our quiz covers only 2--3 skills. GrammarExplanation is set to $1.2\times$: \citet{spada2010explicit} found explicit instruction effective ($d=1.0$) but below practice-based methods, and \citet{dekeyser2003implicit} noted its limited transfer to spontaneous production. FreeForm (free recall/production) is set to $2.0\times$ based on \citet{roediger2006power}, who showed free recall produces approximately twice the retention of recognition review, with \citet{rowland2014testing} confirming across 159 studies that production tests yield larger testing effects than recognition. Since these multipliers are derived from aggregate meta-analytic estimates rather than exact measurements, we verify robustness by sweeping a global effectiveness scale factor from $0.5\times$ to $1.5\times$ across all solvers (see Section~5.5).
 
 %% ============================================================
 \section{Methods}
@@ -92,24 +99,24 @@ Our Gymnasium-compatible environment simulates a language learner over $T=200$ s
     r_t = \Delta\bar{\hat{m}}_t - \lambda \cdot \text{cost}(a_t), \quad \lambda = 0.01
 \end{equation}
 where $\Delta\bar{\hat{m}}_t$ is the change in mean estimated mastery.
-Table~\ref{tab:solvers} summarizes solver properties; costs are from SLAM timing data and effectiveness multipliers from educational literature.
+Table~\ref{tab:solvers} summarizes solver properties; costs are normalized from SLAM exercise timing data and effectiveness multipliers are derived from meta-analytic effect sizes in cognitive and educational psychology (see Section~3).
 
 \begin{table}[h]
 \vspace{-0.5em}
 \centering
 \small
-\caption{Solver module properties.}
+\caption{Solver module properties. Costs are normalized from SLAM exercise timing data. Effectiveness multipliers are derived from meta-analytic effect sizes (see Section~3).}
 \label{tab:solvers}
 \vspace{0.3em}
 \begin{tabular}{@{}lccl@{}}
 \toprule
-Solver & Cost & Effectiveness & Skill targeting \\
+Solver & Cost & Eff. & Source for effectiveness \\
 \midrule
-VocabDrill       & 0.10 & 1.0$\times$ & 1 random vocab skill \\
-SpacedRepetition & 0.15 & 1.5$\times$ & Weakest skill \\
-MixedQuiz        & 0.43 & 1.4$\times$ & 2--3 random skills \\
-GrammarExplanation     & 0.47 & 1.2$\times$ & 1 random grammar skill \\
-FreeForm         & 0.50 & 2.0$\times$ & All 10 skills \\
+VocabDrill       & 0.10 & 1.0$\times$ & Baseline (recognition) \\
+SpacedRepetition & 0.15 & 1.5$\times$ & \citet{cepeda2006spacing} \\
+MixedQuiz        & 0.43 & 1.4$\times$ & \citet{rohrer2007interleaving} \\
+GrammarExpl.     & 0.47 & 1.2$\times$ & \citet{spada2010explicit} \\
+FreeForm         & 0.50 & 2.0$\times$ & \citet{roediger2006power} \\
 \bottomrule
 \end{tabular}
 \vspace{-0.5em}
@@ -147,10 +154,6 @@ a_t = \arg\max_a \;\boldsymbol{\theta}_a^\top \mathbf{o}_t + \alpha\sqrt{\mathbf
 \end{equation}
 This is a myopic (one-step) contextual bandit---it maximizes immediate expected reward with an upper confidence exploration bonus but does not plan over future states.
 
-\subsection{Behavior Cloning (BC)}
-
-We collect 100,000 $(\mathbf{o}, a)$ demonstration pairs from DQN rollouts and train a 2-layer MLP (64 units) via cross-entropy loss to imitate the DQN policy. BC is a supervised classification approach: it minimizes $-\sum_i \log \hat{\pi}(a_i | \mathbf{o}_i)$ without any notion of reward or temporal structure.
-
 \subsection{Baselines}
 
 \textbf{Curriculum}: progresses through skills sorted by fitted difficulty (easiest first), allocating 80\% of steps to sequential instruction and 20\% to spaced review.
@@ -162,7 +165,7 @@ We collect 100,000 $(\mathbf{o}, a)$ demonstration pairs from DQN rollouts and t
 
 \subsection{Experimental Setup}
 
-All RL methods are trained for $10^6$ timesteps. PPO and DQN use learning rate $3\!\times\!10^{-4}$, batch size 64, and $\gamma\!=\!0.99$. These hyperparameters are the Stable-Baselines3 defaults, which we found performed well without tuning. MPC models are trained for 50 epochs with learning rate $10^{-3}$. BC is trained for 50 epochs on DQN demonstrations. We did not perform cross-validation as all methods are evaluated on 100 \emph{fresh} simulated learners (new random seeds) that were never seen during training, avoiding overfitting by construction.
+All RL methods are trained for $10^6$ timesteps with $\gamma\!=\!0.99$. PPO and DQN use 2-layer MLP policies (64 units), batch size 64, and learning rate $3\!\times\!10^{-4}$. MPC world models are trained for 50 epochs with learning rate $10^{-3}$. To select the cost penalty weight $\lambda$ and validate the learning rate, we conducted a $3\!\times\!3$ hyperparameter sweep over learning rates $\{10^{-4}, 3\!\times\!10^{-4}, 10^{-3}\}$ and $\lambda \in \{0, 0.01, 0.1\}$ using shorter PPO runs (200K steps, 50 eval episodes each). All final methods are evaluated on 100 fresh simulated learners with new random seeds never seen during training, avoiding overfitting by construction.
 
 \subsection{Metrics}
 
@@ -187,7 +190,6 @@ Model-free RL   & PPO        & 0.744 $\pm$ .088 & \textbf{+0.24 $\pm$ .18} & 25.
 Model-free RL   & DQN        & 0.625 $\pm$ .189 & +0.15 $\pm$ .22 & 22.4 $\pm$ 4.2 \\
 Model-based RL  & MPC        & \textbf{0.746 $\pm$ .179} & +0.17 $\pm$ .22 & 32.2 $\pm$ 8.1 \\
 Bandit          & LinUCB     & 0.726 $\pm$ .197 & +0.05 $\pm$ .30 & 42.8 $\pm$ 12.6 \\
-Supervised      & BC         & 0.633 $\pm$ .152 & +0.17 $\pm$ .16 & 21.7 $\pm$ 2.0 \\
 Heuristic       & Curriculum & 0.495 $\pm$ .074 & $-$0.27 $\pm$ .07 & 51.6 $\pm$ 0.0 \\
 Baseline        & Random     & 0.683 $\pm$ .321 & $-$0.23 $\pm$ .32 & 66.4 $\pm$ 2.5 \\
 \bottomrule
@@ -201,13 +203,88 @@ Baseline        & Random     & 0.683 $\pm$ .321 & $-$0.23 $\pm$ .32 & 66.4 $\pm$
 
 \textbf{DQN converges to a cost-minimizing policy}, selecting VocabDrill (cheapest solver) 94\% of the time. This sacrifices proficiency (0.625) for low cost (22.4). This failure mode---$\epsilon$-greedy exploration failing to discover that expensive solvers justify their cost long-term---is a known limitation of value-based methods in environments with delayed rewards.
 
-\textbf{BC faithfully imitates its teacher's limitations.} BC achieves 99.3\% action-prediction accuracy on DQN demonstrations and reproduces DQN's conservative strategy almost exactly (0.633 proficiency, 21.7 cost). This confirms that imitation learning is bounded by teacher quality.
+Figure~\ref{fig:comparison} visualizes these tradeoffs across all three metrics: proficiency, reward, and cost. Figure~\ref{fig:pareto} plots the proficiency-vs-cost Pareto frontier, where upper-left is ideal; PPO and MPC dominate the efficient region while LinUCB, Curriculum, and Random are Pareto-dominated.
+
+The mastery trajectories in Figure~\ref{fig:mastery} reveal distinct learning dynamics across methods. All methods start from the same initial belief mastery (${\sim}0.25$), but diverge within the first 25 timesteps. PPO and MPC rise steeply to ${\sim}0.75$ and sustain that level through the episode, with PPO showing notably tight variance (narrow shading) reflecting consistent performance across learners. LinUCB follows a similar early trajectory but plateaus slightly lower (${\sim}0.73$) with wider variance, consistent with its myopic strategy occasionally overspending without long-term gain. DQN rises quickly to ${\sim}0.62$ but then flatlines---a signature of its VocabDrill-only policy, which provides cheap but low-effectiveness practice insufficient for further mastery gains. Random shows the widest variance band (extending from ${\sim}0.0$ to ${\sim}1.0$), with a mean around 0.68; its high ceiling comes from episodes where it happens to select effective solvers, while its low floor reflects episodes dominated by cheap, low-impact exercises. The curriculum baseline rises most slowly and ends at ${\sim}0.50$, well below all other methods---its rigid phased schedule spends equal time on easy and hard skills, wasting effort on already-mastered material while under-investing in difficult skills like future tense.
+
+\subsection{Hyperparameter Sensitivity}
+
+Table~\ref{tab:sweep} shows results of the PPO hyperparameter sweep. The cost penalty $\lambda$ is the dominant hyperparameter: performance is largely insensitive to learning rate within each $\lambda$ group.
+
+\begin{table}[h]
+\vspace{-0.5em}
+\centering
+\small
+\caption{PPO hyperparameter sweep (200K steps, 50 eval episodes). Learning rate has minimal effect; $\lambda$ controls the proficiency-cost tradeoff.}
+\label{tab:sweep}
+\vspace{0.3em}
+\begin{tabular}{@{}ccccc@{}}
+\toprule
+LR & $\lambda$ & Proficiency & Reward & Cost \\
+\midrule
+$10^{-4}$ & 0    & 0.827 $\pm$ .220 & +0.58 $\pm$ .22 & 100.0 \\
+$3\!\times\!10^{-4}$ & 0    & 0.827 $\pm$ .220 & +0.58 $\pm$ .22 & 100.0 \\
+$10^{-3}$ & 0    & 0.828 $\pm$ .186 & +0.58 $\pm$ .19 & 96.0 \\
+\midrule
+$10^{-4}$ & 0.01 & 0.592 $\pm$ .161 & +0.13 $\pm$ .16 & 21.5 \\
+$3\!\times\!10^{-4}$ & 0.01 & 0.695 $\pm$ .138 & +0.22 $\pm$ .16 & 22.6 \\
+$10^{-3}$ & 0.01 & 0.692 $\pm$ .140 & +0.23 $\pm$ .16 & 21.6 \\
+\midrule
+$10^{-4}$ & 0.1  & 0.376 $\pm$ .048 & $-$1.87 $\pm$ .05 & 20.0 \\
+$3\!\times\!10^{-4}$ & 0.1  & 0.376 $\pm$ .048 & $-$1.87 $\pm$ .05 & 20.0 \\
+$10^{-3}$ & 0.1  & 0.555 $\pm$ .286 & $-$1.74 $\pm$ .29 & 20.4 \\
+\bottomrule
+\end{tabular}
+\vspace{-0.5em}
+\end{table}
+
+With $\lambda\!=\!0$ (no cost penalty), PPO achieves the highest proficiency (0.83) but exhausts the maximum cost budget (100.0), always selecting FreeForm---the most effective but most expensive solver. With $\lambda\!=\!0.1$, the penalty overwhelms the learning signal: the agent collapses to VocabDrill (cost 20.0, the minimum possible over 200 steps at 0.10/step) and proficiency drops to 0.38. The intermediate $\lambda\!=\!0.01$ produces the best tradeoff: proficiency remains high (0.69) while cost drops 78\% to 22.6. Within this regime, lr $= 3\!\times\!10^{-4}$ slightly outperforms $10^{-4}$ in proficiency (0.695 vs.\ 0.592) while matching $10^{-3}$, confirming the SB3 default as a reasonable choice. We select $\lambda\!=\!0.01$ and lr $= 3\!\times\!10^{-4}$ for all final experiments.
+
+\subsection{Effectiveness Robustness}
+
+Since our effectiveness multipliers are derived from meta-analytic effect sizes rather than exact measurements, we verify that PPO's advantage is not an artifact of a particular effectiveness regime. We globally scale all solver effectiveness values by a factor $s \in \{0.5, 0.75, 1.0, 1.25, 1.5\}$ and retrain PPO, LinUCB, and Random at each setting (200K steps, 50 eval episodes). Table~\ref{tab:eff_sweep} shows the results.
+
+\begin{table}[h]
+\vspace{-0.5em}
+\centering
+\small
+\caption{Effectiveness robustness sweep. PPO achieves the highest reward at every scale.}
+\label{tab:eff_sweep}
+\vspace{0.3em}
+\begin{tabular}{@{}clccc@{}}
+\toprule
+Scale & Method & Proficiency & Reward & Cost \\
+\midrule
+\multirow{3}{*}{$0.5\times$}
+ & PPO    & 0.361 $\pm$ .207 & \textbf{$-$0.09 $\pm$ .21} & 20.5 \\
+ & LinUCB & 0.549 $\pm$ .233 & $-$0.29 $\pm$ .37 & 59.2 \\
+ & Random & 0.536 $\pm$ .265 & $-$0.37 $\pm$ .27 & 66.0 \\
+\midrule
+\multirow{3}{*}{$1.0\times$}
+ & PPO    & 0.695 $\pm$ .138 & \textbf{+0.22 $\pm$ .16} & 22.6 \\
+ & LinUCB & 0.735 $\pm$ .208 & $-$0.05 $\pm$ .30 & 53.9 \\
+ & Random & 0.760 $\pm$ .260 & $-$0.15 $\pm$ .26 & 66.0 \\
+\midrule
+\multirow{3}{*}{$1.5\times$}
+ & PPO    & 0.895 $\pm$ .064 & \textbf{+0.42 $\pm$ .08} & 22.0 \\
+ & LinUCB & 0.824 $\pm$ .184 & +0.02 $\pm$ .22 & 55.7 \\
+ & Random & 0.863 $\pm$ .191 & $-$0.05 $\pm$ .19 & 66.0 \\
+\bottomrule
+\end{tabular}
+\vspace{-0.5em}
+\end{table}
+
+PPO achieves the highest cumulative reward at all five effectiveness scales (three shown for space; $0.75\times$ and $1.25\times$ follow the same trend). PPO's cost remains stable at ${\sim}21$--$23$ regardless of scale, while LinUCB consistently overspends ($52$--$59$) and Random uses ${\sim}66$. At the extreme $0.5\times$ setting---where all solvers are half as effective---PPO correctly identifies that heavy investment in expensive solvers yields diminishing returns and minimizes cost (20.5), limiting its losses ($-0.09$) far better than LinUCB ($-0.29$) or Random ($-0.37$). At $1.5\times$, PPO achieves 0.895 proficiency and +0.42 reward, surpassing all baselines on both metrics. This confirms that our main finding---PPO's superior cost-adjusted performance---is robust to the exact effectiveness multiplier values and not dependent on a specific calibration.
 
 \subsection{Qualitative Analysis}
 
-Figure~\ref{fig:pareto} shows the proficiency-vs-cost Pareto frontier. PPO achieves the best tradeoff (upper-left), while LinUCB and Random occupy the inefficient region (high cost, modest proficiency). The curriculum baseline is both expensive and low-performing---it rigidly allocates time across skills regardless of individual learner needs.
+\textbf{Adaptive strategy mixing.} PPO learns a context-dependent policy rather than a fixed solver preference. Its high cost variance ($\pm$13.6, vs.\ $\pm$4.2 for DQN and $\pm$0.0 for Curriculum) reflects that it dynamically adjusts: when a learner's mastery is low, PPO invests in expensive high-effectiveness solvers (FreeForm, SpacedRepetition); as mastery rises, it shifts toward cheaper solvers (VocabDrill) to consolidate gains without overspending. This is precisely the adaptive behavior that hand-designed curricula cannot achieve because they commit to a fixed schedule regardless of learner state.
 
-Figure~\ref{fig:mastery} shows mastery trajectories over 200 timesteps. PPO and MPC exhibit steady upward trends, while DQN's mastery plateaus early due to its over-reliance on VocabDrill. The curriculum shows a distinctive staircase pattern from its phased skill progression, but the late-episode spaced review phase cannot recover the ground lost by rigid early-phase allocation. Random shows high variance because it occasionally selects highly effective solvers by chance but wastes most of its budget on suboptimal choices.
+\textbf{Myopia as a failure mode.} LinUCB achieves competitive proficiency (0.726) but at nearly double PPO's cost (42.8 vs.\ 25.6). Because it maximizes one-step expected reward, LinUCB cannot reason about the long-term consequences of solver selection---it repeatedly chooses expensive solvers that yield high immediate mastery gains even when the learner has already reached a point of diminishing returns. This demonstrates that the temporal credit assignment problem in tutoring is non-trivial: greedy optimization wastes resources.
+
+\textbf{Exploration-exploitation tradeoff in DQN.} DQN's collapse to VocabDrill reveals a failure of $\epsilon$-greedy exploration in cost-penalized environments. Because expensive solvers have negative immediate cost signals, random exploration rarely encounters the delayed proficiency gains that justify their use. Once DQN's Q-values converge to favor cheap actions, the decaying $\epsilon$ schedule locks in this suboptimal policy. PPO avoids this because its stochastic policy maintains entropy throughout training, and the advantage estimator aggregates rewards over longer horizons.
+
+\textbf{Rigidity of the curriculum baseline.} The curriculum achieves the lowest proficiency (0.495) despite spending heavily (51.6), performing worse than even random selection. Its phased skill progression---spending equal time on each skill regardless of difficulty---means it under-invests in hard skills (future tense, $d=0.50$) and over-invests in easy ones (articles, $d=0.09$). The 20\% review phase at episode end cannot compensate because forgetting has already eroded gains from the early phases. This illustrates why fixed curricula are fundamentally limited: they cannot reallocate effort in response to individual learner needs.
 
 \subsection{Overfitting}
 
@@ -225,7 +302,7 @@ Since evaluation uses 100 fresh simulated learners with new random seeds (never 
     \centering
     \includegraphics[width=0.7\textwidth]{results/proficiency_vs_cost.png}
     \vspace{-0.5em}
-    \caption{Proficiency vs.\ cost tradeoff. Upper-left is ideal. PPO achieves the best Pareto tradeoff.}
+    \caption{Proficiency vs.\ cost tradeoff. Upper-left is ideal. PPO and MPC occupy the efficient frontier; LinUCB, Curriculum, and Random are Pareto-dominated.}
     \label{fig:pareto}
 \end{figure}
 
@@ -233,7 +310,7 @@ Since evaluation uses 100 fresh simulated learners with new random seeds (never 
     \centering
     \includegraphics[width=\textwidth]{results/mastery_curves.png}
     \vspace{-1.5em}
-    \caption{Mean estimated mastery over episode timesteps (shading: $\pm$1 std across 100 episodes).}
+    \caption{Mean estimated mastery over episode timesteps (shading: $\pm$1 std across 100 episodes). PPO and MPC show steady gains; DQN plateaus early; Curriculum exhibits a staircase pattern from phased skill progression.}
     \label{fig:mastery}
 \end{figure}
 
@@ -241,14 +318,14 @@ Since evaluation uses 100 fresh simulated learners with new random seeds (never 
 \section{Conclusion / Future Work}
 %% ============================================================
 
-We demonstrated that framing adaptive language tutoring as a POMDP and applying RL yields policies that significantly outperform myopic, heuristic, and random baselines. PPO achieves the best cost-adjusted reward by learning to mix cheap and expensive solvers adaptively, while MPC matches its proficiency through learned dynamics and planning. Key findings are: (1) long-horizon planning (PPO, MPC) substantially outperforms greedy optimization (LinUCB), (2) policy-gradient methods are more robust than value-based methods (DQN) in this cost-tradeoff setting, (3) behavior cloning faithfully replicates but cannot improve upon its teacher, and (4) hand-designed curricula underperform even random selection when they cannot adapt to individual learners.
+We demonstrated that framing adaptive language tutoring as a POMDP and applying RL yields policies that significantly outperform myopic, heuristic, and random baselines. PPO achieves the best cost-adjusted reward by learning to mix cheap and expensive solvers adaptively, while model-based MPC matches its proficiency through learned dynamics and planning. Key findings are: (1) long-horizon planning (PPO, MPC) substantially outperforms greedy optimization (LinUCB), (2) policy-gradient methods are more robust than value-based methods (DQN) in this cost-tradeoff setting, (3) hand-designed curricula underperform even random selection when they cannot adapt to individual learners, and (4) PPO's reward advantage is robust across a $3\times$ range of solver effectiveness multipliers, confirming that our results do not depend on exact parameter calibration.
 
 For future work, we would extend the environment with richer partial observability (noisy mastery estimates, stochastic response variability), conduct ablation studies on the decay rate and effectiveness multipliers to identify which environmental features make planning most valuable, and validate the approach with real learner studies.
 
 %% ============================================================
 \section{Contributions}
 %% ============================================================
-This project was completed solely by Sandeep Sundaram. All components---environment design, Duolingo SLAM data fitting, algorithm implementation (PPO, DQN, MPC, LinUCB, BC, Curriculum), evaluation pipeline, and report writing---were done individually.
+This project was completed solely by Sandeep Sundaram. All components---environment design, Duolingo SLAM data fitting, algorithm implementation (PPO, DQN, MPC, LinUCB, Curriculum), evaluation pipeline, and report writing---were done individually.
 
 \bibliographystyle{acl_natbib}
 \bibliography{references}
