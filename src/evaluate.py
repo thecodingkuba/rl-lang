@@ -4,8 +4,10 @@ N fresh simulated learners, and produces comparison tables + plots.
 
 Usage:
     python -m src.evaluate
+    python -m src.evaluate --no-wandb
 """
 
+import argparse
 import os
 import pickle
 from pathlib import Path
@@ -19,6 +21,12 @@ from src.agent.policy import SB3PolicyWrapper
 from src.config.env_config import EnvConfig
 from src.config.train_config import TrainConfig
 from src.env.env import LanguageTutoringEnv
+
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
 
 
 N_EVAL_LEARNERS = 100
@@ -160,6 +168,10 @@ def plot_results(results: Dict[str, dict], results_dir: str):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Evaluate trained agents")
+    parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
+    args = parser.parse_args()
+
     env_config = EnvConfig()
     train_config = TrainConfig()
     env = LanguageTutoringEnv(env_config)
@@ -170,6 +182,16 @@ def main():
     if not policies:
         print("No trained models found. Run `python -m src.train --algo all` first.")
         return
+
+    use_wandb = not args.no_wandb and WANDB_AVAILABLE and train_config.use_wandb
+    wb_run = None
+    if use_wandb:
+        wb_run = wandb.init(
+            project=train_config.wandb_project,
+            name="evaluation",
+            job_type="eval",
+            config={"n_eval_learners": N_EVAL_LEARNERS},
+        )
 
     print(f"Loaded policies: {list(policies.keys())}")
     print(f"Evaluating each on {N_EVAL_LEARNERS} fresh learners...\n")
@@ -192,6 +214,35 @@ def main():
     print("=" * 65)
 
     plot_results(results, train_config.results_dir)
+
+    if wb_run:
+        # log summary metrics
+        for name, res in results.items():
+            wandb.log({
+                f"{name}/proficiency_mean": res["mean_proficiency"],
+                f"{name}/proficiency_std": res["std_proficiency"],
+                f"{name}/reward_mean": res["mean_reward"],
+                f"{name}/reward_std": res["std_reward"],
+            })
+            for i, s_name in enumerate(["vocab_drill", "grammar", "mixed_quiz", "spaced_rep", "free_form"]):
+                wandb.log({f"{name}/solver_{s_name}": res["solver_distribution"][i]})
+
+        # log plots as W&B artifacts
+        for fname in ["comparison_bars.png", "mastery_curves.png", "solver_distribution.png"]:
+            fpath = os.path.join(train_config.results_dir, fname)
+            if os.path.exists(fpath):
+                wandb.log({fname.replace(".png", ""): wandb.Image(fpath)})
+
+        # log summary table
+        table = wandb.Table(
+            columns=["Method", "Proficiency", "Prof_Std", "Reward", "Reward_Std"],
+            data=[[name, res["mean_proficiency"], res["std_proficiency"],
+                    res["mean_reward"], res["std_reward"]]
+                   for name, res in results.items()],
+        )
+        wandb.log({"results_table": table})
+        wb_run.finish()
+
     env.close()
 
 

@@ -37,19 +37,19 @@ class Learner:
         P(correct) = sigma(mean_mastery_on_tested_skills - difficulty)
         """
         relevant_mastery = self.true_mastery[question.skill_indices].mean()
-        p_correct = _sigmoid(5.0 * (relevant_mastery - question.difficulty))
+        p_correct = _sigmoid(self.config.sigmoid_beta * (relevant_mastery - question.difficulty))
         return bool(self.rng.random() < p_correct)
 
     def transition(self, question, correct: bool) -> None:
         """
         Update true mastery using prediction-error rule from the writeup:
-          m_{t+1,k} = m_k + alpha_k * (c - sigma(m_k - d))
+          m_{t+1,k} = m_k + effectiveness * alpha_k * (c - sigma(m_k - d))
           alpha_k   = alpha_0 / sqrt(1 + count_k)
         """
         for k in question.skill_indices:
-            predicted = _sigmoid(5.0 * (self.true_mastery[k] - question.difficulty))
+            predicted = _sigmoid(self.config.sigmoid_beta * (self.true_mastery[k] - question.difficulty))
             alpha_k = self.config.learning_rate / np.sqrt(1.0 + self.interaction_counts[k])
-            self.true_mastery[k] += alpha_k * (float(correct) - predicted)
+            self.true_mastery[k] += question.effectiveness * alpha_k * (float(correct) - predicted)
             self.true_mastery[k] = np.clip(
                 self.true_mastery[k], self.config.min_mastery, self.config.max_mastery
             )

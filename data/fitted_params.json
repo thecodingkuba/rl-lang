@@ -1,0 +1,25 @@
+{
+  "fitted_raw": {
+    "beta": 5.228475482875026,
+    "alpha_0": 0.6392656798094986,
+    "delta_per_day": 0.0001
+  },
+  "env_params": {
+    "beta": 5.228475482875026,
+    "learning_rate": 0.6392656798094986,
+    "decay_rate": 5.000248766151572e-07,
+    "note": "Fitted from Duolingo SLAM data. delta_per_day=0.000100 converted to delta_per_step=0.000001 assuming 200 steps/day."
+  },
+  "skill_difficulties": {
+    "grammar:present": 0.12388732915469658,
+    "grammar:past": 0.14002428166734115,
+    "grammar:future": 0.5,
+    "grammar:articles": 0.08796016560367026,
+    "grammar:prepositions": 0.17951977401129948,
+    "vocab:1": 0.12400547696595521,
+    "vocab:2": 0.09323021796617059,
+    "vocab:3": 0.14472988688021993,
+    "vocab:4": 0.12693682745988977,
+    "vocab:5": 0.13099494097807762
+  }
+}

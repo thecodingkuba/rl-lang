@@ -12,3 +12,5 @@ class TrainConfig:
     eval_freq: int = 5_000
     n_eval_episodes: int = 20
     verbose: int = 1
+    wandb_project: str = "rl-lang-tutoring"
+    use_wandb: bool = True

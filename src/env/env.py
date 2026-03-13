@@ -80,9 +80,9 @@ class LanguageTutoringEnv(gym.Env):
 
         # 5. update belief state (same prediction-error rule, but on our estimates)
         for k in question.skill_indices:
-            predicted = _sigmoid(5.0 * (self._belief_mastery[k] - question.difficulty))
+            predicted = _sigmoid(self.config.sigmoid_beta * (self._belief_mastery[k] - question.difficulty))
             alpha_k = self.config.learning_rate / np.sqrt(1.0 + self._belief_counts[k])
-            self._belief_mastery[k] += alpha_k * (float(correct) - predicted)
+            self._belief_mastery[k] += question.effectiveness * alpha_k * (float(correct) - predicted)
             self._belief_mastery[k] = np.clip(
                 self._belief_mastery[k], self.config.min_mastery, self.config.max_mastery
             )

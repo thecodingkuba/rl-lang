@@ -11,17 +11,19 @@ Usage:
     python -m src.train --algo linucb
     python -m src.train --algo random
     python -m src.train --algo all
+    python -m src.train --algo all --no-wandb   # disable W&B logging
 """
 
 import argparse
 import os
 import pickle
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
 from stable_baselines3 import PPO, DQN
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 
 from src.config.env_config import EnvConfig
 from src.config.agent_config import AgentConfig
@@ -29,6 +31,35 @@ from src.config.train_config import TrainConfig
 from src.env.env import LanguageTutoringEnv
 from src.baselines.random_policy import RandomPolicy
 from src.baselines.linucb import LinUCB
+
+try:
+    import wandb
+    from wandb.integration.sb3 import WandbCallback
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+
+
+def _wandb_config(env_config, agent_config, train_config, algo):
+    """Flatten all configs into a single dict for W&B."""
+    cfg = {"algorithm": algo}
+    cfg.update({f"env/{k}": v for k, v in asdict(env_config).items()})
+    cfg.update({f"agent/{k}": v for k, v in asdict(agent_config).items()})
+    cfg.update({f"train/{k}": v for k, v in asdict(train_config).items()})
+    return cfg
+
+
+def _init_wandb(algo, env_config, agent_config, train_config):
+    """Init a W&B run if enabled."""
+    if not train_config.use_wandb or not WANDB_AVAILABLE:
+        return None
+    run = wandb.init(
+        project=train_config.wandb_project,
+        name=algo,
+        config=_wandb_config(env_config, agent_config, train_config, algo),
+        reinit=True,
+    )
+    return run
 
 
 def make_env(config: EnvConfig):
@@ -39,6 +70,8 @@ def make_env(config: EnvConfig):
 
 def train_ppo(env_config: EnvConfig, agent_config: AgentConfig, train_config: TrainConfig):
     print("=== Training PPO ===")
+    run = _init_wandb("ppo", env_config, agent_config, train_config)
+
     vec_env = make_vec_env(
         make_env(env_config), n_envs=agent_config.n_envs, seed=train_config.seed
     )
@@ -56,25 +89,33 @@ def train_ppo(env_config: EnvConfig, agent_config: AgentConfig, train_config: Tr
         seed=train_config.seed,
     )
 
-    eval_callback = EvalCallback(
-        eval_env,
-        best_model_save_path=os.path.join(train_config.model_dir, "ppo"),
-        log_path=log_path,
-        eval_freq=train_config.eval_freq,
-        n_eval_episodes=train_config.n_eval_episodes,
-        deterministic=True,
-    )
+    callbacks = [
+        EvalCallback(
+            eval_env,
+            best_model_save_path=os.path.join(train_config.model_dir, "ppo"),
+            log_path=log_path,
+            eval_freq=train_config.eval_freq,
+            n_eval_episodes=train_config.n_eval_episodes,
+            deterministic=True,
+        ),
+    ]
+    if run and WANDB_AVAILABLE:
+        callbacks.append(WandbCallback(verbose=0))
 
-    model.learn(total_timesteps=agent_config.total_timesteps, callback=eval_callback)
+    model.learn(total_timesteps=agent_config.total_timesteps, callback=callbacks)
     save_path = os.path.join(train_config.model_dir, "ppo", "final_model")
     model.save(save_path)
     print(f"PPO model saved to {save_path}")
     vec_env.close()
     eval_env.close()
+    if run:
+        run.finish()
 
 
 def train_dqn(env_config: EnvConfig, agent_config: AgentConfig, train_config: TrainConfig):
     print("=== Training DQN ===")
+    run = _init_wandb("dqn", env_config, agent_config, train_config)
+
     env = LanguageTutoringEnv(env_config)
     eval_env = LanguageTutoringEnv(env_config)
 
@@ -92,21 +133,27 @@ def train_dqn(env_config: EnvConfig, agent_config: AgentConfig, train_config: Tr
         exploration_final_eps=0.05,
     )
 
-    eval_callback = EvalCallback(
-        eval_env,
-        best_model_save_path=os.path.join(train_config.model_dir, "dqn"),
-        log_path=log_path,
-        eval_freq=train_config.eval_freq,
-        n_eval_episodes=train_config.n_eval_episodes,
-        deterministic=True,
-    )
+    callbacks = [
+        EvalCallback(
+            eval_env,
+            best_model_save_path=os.path.join(train_config.model_dir, "dqn"),
+            log_path=log_path,
+            eval_freq=train_config.eval_freq,
+            n_eval_episodes=train_config.n_eval_episodes,
+            deterministic=True,
+        ),
+    ]
+    if run and WANDB_AVAILABLE:
+        callbacks.append(WandbCallback(verbose=0))
 
-    model.learn(total_timesteps=agent_config.total_timesteps, callback=eval_callback)
+    model.learn(total_timesteps=agent_config.total_timesteps, callback=callbacks)
     save_path = os.path.join(train_config.model_dir, "dqn", "final_model")
     model.save(save_path)
     print(f"DQN model saved to {save_path}")
     env.close()
     eval_env.close()
+    if run:
+        run.finish()
 
 
 def train_baseline(
@@ -115,8 +162,10 @@ def train_baseline(
     agent_config: AgentConfig,
     train_config: TrainConfig,
 ):
-    """Train LinUCB or Random via a simple rollout loop."""
+    """Train LinUCB or Random via a simple rollout loop with W&B logging."""
     print(f"=== Training {algo_name.upper()} ===")
+    run = _init_wandb(algo_name, env_config, agent_config, train_config)
+
     env = LanguageTutoringEnv(env_config)
     obs_dim = 2 * len(env_config.skills)
 
@@ -134,10 +183,13 @@ def train_baseline(
     while total_steps < agent_config.total_timesteps:
         obs, _ = env.reset(seed=train_config.seed + episode)
         ep_reward = 0.0
+        ep_mastery_start = float(obs[:len(env_config.skills)].mean())
         done = False
+        solver_counts = np.zeros(5)
 
         while not done:
             action = policy.select_action(obs)
+            solver_counts[action] += 1
             next_obs, reward, terminated, truncated, info = env.step(action)
             policy.update(obs, action, reward, next_obs)
             obs = next_obs
@@ -147,6 +199,23 @@ def train_baseline(
 
         all_rewards.append(ep_reward)
         episode += 1
+
+        ep_mastery_end = float(obs[:len(env_config.skills)].mean())
+
+        if run:
+            wandb.log({
+                "episode": episode,
+                "total_steps": total_steps,
+                "episode_reward": ep_reward,
+                "mastery_start": ep_mastery_start,
+                "mastery_end": ep_mastery_end,
+                "mastery_gain": ep_mastery_end - ep_mastery_start,
+                "solver/vocab_drill": solver_counts[0] / solver_counts.sum(),
+                "solver/grammar": solver_counts[1] / solver_counts.sum(),
+                "solver/mixed_quiz": solver_counts[2] / solver_counts.sum(),
+                "solver/spaced_rep": solver_counts[3] / solver_counts.sum(),
+                "solver/free_form": solver_counts[4] / solver_counts.sum(),
+            })
 
         if episode % 50 == 0:
             recent = all_rewards[-50:]
@@ -161,6 +230,8 @@ def train_baseline(
         pickle.dump(policy, f)
     print(f"{algo_name} policy saved to {save_dir}/policy.pkl")
     env.close()
+    if run:
+        run.finish()
 
 
 def main():
@@ -172,11 +243,23 @@ def main():
         choices=["ppo", "dqn", "linucb", "random", "all"],
         help="Which algorithm to train",
     )
+    parser.add_argument(
+        "--no-wandb",
+        action="store_true",
+        help="Disable W&B logging",
+    )
     args = parser.parse_args()
 
     env_config = EnvConfig()
     agent_config = AgentConfig()
     train_config = TrainConfig()
+
+    if args.no_wandb:
+        train_config.use_wandb = False
+
+    if train_config.use_wandb and not WANDB_AVAILABLE:
+        print("WARNING: wandb not installed. Run `pip install wandb` to enable logging.")
+        print("Continuing without W&B...\n")
 
     Path(train_config.model_dir).mkdir(parents=True, exist_ok=True)
     Path(train_config.log_dir).mkdir(parents=True, exist_ok=True)

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import json
 from typing import Dict, List
 
 
@@ -27,8 +28,9 @@ class EnvConfig:
     ])
 
     init_mastery: float = 0.25
-    learning_rate: float = 0.10
-    decay_rate: float = 0.01
+    learning_rate: float = 0.6393      # fitted from Duolingo SLAM (alpha_0)
+    decay_rate: float = 0.0000005      # fitted from SLAM (delta_per_day=0.0001, converted to per-step)
+    sigmoid_beta: float = 5.23         # fitted from SLAM (IRT discrimination)
     min_mastery: float = 0.0
     max_mastery: float = 1.0
     episode_length: int = 200
@@ -42,6 +44,19 @@ class EnvConfig:
         "free_form": 0.5,
     })
 
-    cost_penalty_lambda: float = 0.1
+    cost_penalty_lambda: float = 0.01
     mastery_noise_std: float = 0.05
     discount_gamma: float = 0.99
+
+    @classmethod
+    def from_fitted(cls, json_path: str = "data/fitted_params.json", **overrides) -> "EnvConfig":
+        """Load an EnvConfig with parameters calibrated from Duolingo SLAM data."""
+        with open(json_path) as f:
+            data = json.load(f)
+        env_params = data["env_params"]
+        return cls(
+            learning_rate=env_params["learning_rate"],
+            decay_rate=env_params["decay_rate"],
+            sigmoid_beta=env_params["beta"],
+            **overrides,
+        )
