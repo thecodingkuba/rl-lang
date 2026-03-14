@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from stable_baselines3 import PPO, DQN
 
-from src.agent.policy import SB3PolicyWrapper
 from src.config.env_config import EnvConfig
 from src.config.train_config import TrainConfig
 from src.env.env import LanguageTutoringEnv
@@ -20,6 +19,15 @@ except ImportError:
     WANDB_AVAILABLE = False
 
 N_EVAL_LEARNERS = 100
+
+
+class SB3PolicyWrapper:
+    def __init__(self, model):
+        self.model = model
+
+    def select_action(self, obs):
+        action, _ = self.model.predict(obs, deterministic=True)
+        return int(action)
 
 
 def load_policies(model_dir: str, obs_dim: int) -> Dict[str, object]:
